@@ -166,10 +166,10 @@ async function startServer() {
   } else {
     // Basic static serving setup for production
     app.use(express.static(distPath, {index:false, setHeaders(response, file) {
-      if (file.endsWith('.html')) response.setHeader('Cache-Control', 'no-store');
+      if (file.endsWith('.html')) response.setHeader('Cache-Control', 'no-store, max-age=0');
     }}));
     app.get('*', (req, res) => {
-      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Cache-Control', 'no-store, max-age=0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
