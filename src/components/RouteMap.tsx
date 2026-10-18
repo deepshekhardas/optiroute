@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Play, Package, Truck } from 'lucide-react';
+import { Play, Package, Truck, Search, RefreshCw, ChevronRight, MapPin } from 'lucide-react';
 import { useFirestoreCollection } from '../lib/useFirestore';
 
 // Fix leaflet default icon issue in React
@@ -51,8 +51,18 @@ function MapFlyTo({ position }: { position: [number, number] | null }) {
   return null;
 }
 
+function RouteFocus({path}:{path:[number,number][]|undefined}) {
+  const map=useMap();
+  useEffect(()=>{if(path?.length)map.fitBounds(L.latLngBounds(path),{padding:[55,75],maxZoom:15});},[map,path]);
+  useEffect(()=>{const observer=new ResizeObserver(()=>map.invalidateSize());observer.observe(map.getContainer());return()=>observer.disconnect();},[map]);
+  return null;
+}
+
 export function RouteMap() {
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [panelTab,setPanelTab]=useState<'routes'|'stops'>('routes');
+  const [stopQuery,setStopQuery]=useState('');
+  const [selectedRoute,setSelectedRoute]=useState<string|null>(null);
   const [previewRows, setPreviewRows] = useState<string[] | null>(null);
   const [tileFailed, setTileFailed] = useState(false);
   const [routeFailed, setRouteFailed] = useState(false);
@@ -201,100 +211,35 @@ export function RouteMap() {
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-full w-full relative z-10">
-      <div className="w-full md:w-[340px] max-h-[45vh] md:max-h-none bg-white/5 backdrop-blur-2xl border-r border-white/10 flex flex-col z-[400] relative shadow-2xl">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-bold tracking-tight text-lg text-white">Route Planner</h2>
-
-          </div>
-
-          <button
-            onClick={handleOptimize}
-            disabled={isOptimizing}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-600/30 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isOptimizing ? (
-              <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> Optimizing...</>
-            ) : (
-              <><Play size={16} fill="currentColor" /> Preview assignments</>
-            )}
-          </button>
+    <div className="planner-layout">
+      <section className="planner-panel" aria-label="Delivery planning">
+        <div className="planner-heading"><span className="planner-eyebrow"><span/> LONDON CENTRAL / SAMPLE DATA</span><h2>Plan the next mile.</h2><p>Your routes, stops and capacity in one clear view.</p>
+          <div className="planner-stats"><div><strong>{orders.filter(o=>o.status!=='delivered').length}</strong><span>Active stops</span></div><div><strong>{Object.keys(routeSummary).length}</strong><span>Road routes</span></div><div><strong>{unassignedCount}</strong><span>Unassigned</span></div></div>
+          <button className="planner-primary" onClick={handleOptimize} disabled={isOptimizing}><Play size={15}/>{isOptimizing?'Calculating...':'Preview assignments'}<ChevronRight size={16}/></button>
         </div>
-
-        <section aria-label="Road routes" aria-live="polite" className="px-4 py-3 border-b border-white/10 text-xs text-slate-300">
-          <div className="flex justify-between gap-2 mb-2"><strong>Road routes</strong><button className="underline" onClick={()=>{routeCache.current.clear();setRouteRevision(v=>v+1);}}>Retry routes</button></div>
-          <p className="text-slate-400 mb-2">From sample London depot  /  driving estimates exclude live traffic. Public demo routing; do not enter confidential locations.</p>
-          {(Object.entries(routeSummary) as [string, {state:string;km?:number;minutes?:number}][]).map(([id,route])=><div key={id} className="flex justify-between py-1 gap-2"><span>{id}</span><span>{route.state==='ready'?(route.km===0?'At sample depot':`${route.km?.toFixed(1)} km  /  ${Math.ceil(route.minutes||0)} min`):route.state==='loading'?'Loading road route / ':'Unavailable  /  retry'}</span></div>)}
-          {Object.keys(routeSummary).length===0 && <p>No active assigned stops.</p>}
-        </section>
-        {previewRows && <section aria-label="Assignment preview" aria-live="polite" className="p-4 border-b border-white/10 bg-blue-500/10 text-xs text-slate-200">
-          <h3 className="font-semibold mb-2">Capacity-based assignment preview</h3>
-          <p className="text-slate-400 mb-2">Calculated from current sample orders. Preview only; no dispatch or database changes.</p>
-          <ul className="space-y-1">{previewRows.map((row, index) => <li key={index}>{row}</li>)}</ul>
-          <button onClick={() => setPreviewRows(null)} className="mt-3 underline">Close preview</button>
-        </section>}
-        <div className="flex-1 overflow-y-auto">
-          <div className="px-6 py-3 bg-white/5 border-b border-white/10 flex justify-between items-center backdrop-blur-md sticky top-0 z-10">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Unassigned</span>
-            <span className="bg-rose-500/20 text-rose-400 font-medium px-2 py-0.5 rounded text-[10px] border border-rose-500/30">{unassignedCount}</span>
-          </div>
-
-          <div className="flex flex-col gap-2 p-4">
-            {orders.filter(o => !o.driver).map(order => (
-              <div
-                key={order.id}
-                onClick={() => setSelectedPosition([order.lat, order.lng])}
-                className="bg-white/5 hover:bg-white/10 transition-colors p-3 rounded-xl border border-white/5 cursor-pointer border-l-2 border-l-rose-500"
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-sm font-medium text-white">{order.client}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 bg-rose-500/20 text-rose-400 rounded">{order.timeWindow}</span>
-                </div>
-                <div className="text-xs text-slate-400 truncate mb-3">{order.address}</div>
-                <div className="flex gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-white/5 rounded-md text-[10px] font-medium text-slate-300 border border-white/5">
-                    <Package size={10} className="text-slate-400" /> Vol: {order.volume}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {orders.filter(o => !o.driver).length === 0 && (
-              <div className="p-8 text-center text-slate-500 text-sm">No unassigned sample orders. Use Preview assignments to inspect delayed work.</div>
-            )}
-          </div>
-
-          <div className="px-6 py-3 bg-white/5 border-y border-white/10 flex justify-between items-center backdrop-blur-md sticky top-0 z-10">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Assigned</span>
-            <span className="bg-blue-500/20 text-blue-400 font-medium px-2 py-0.5 rounded text-[10px] border border-blue-500/30">{orders.filter(o => o.driver).length}</span>
-          </div>
-
-          <div className="flex flex-col gap-2 p-4">
-             {orders.filter(o => o.driver).map(order => (
-              <div
-                key={order.id}
-                onClick={() => setSelectedPosition([order.lat, order.lng])}
-                className="bg-white/5 hover:bg-white/10 transition-colors p-3 rounded-xl border border-white/5 cursor-pointer border-l-2 border-l-blue-500"
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span className="text-sm font-medium text-white">{order.client}</span>
-                  <span className="text-[10px] text-slate-500">{order.timeWindow}</span>
-                </div>
-                <div className="text-xs text-slate-400 truncate mb-3">{order.address}</div>
-                <div className="flex gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-500/10 rounded-md text-[10px] font-medium text-blue-400 border border-blue-500/20">
-                    <Truck size={10} /> {order.driver}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
+        {previewRows && <section aria-label="Assignment preview" aria-live="polite" className="planner-preview"><strong>Assignment preview</strong><p>Capacity-based proposal. No dispatch or saved changes.</p><ul>{previewRows.map((row,index)=><li key={index}>{row}</li>)}</ul><button onClick={()=>setPreviewRows(null)}>Close preview</button></section>}
+        <div className="planner-tabs" role="tablist" aria-label="Planner views"><button role="tab" aria-selected={panelTab==='routes'} onClick={()=>setPanelTab('routes')}>Routes <span>{Object.keys(routeSummary).length}</span></button><button role="tab" aria-selected={panelTab==='stops'} onClick={()=>setPanelTab('stops')}>Stops <span>{orders.length}</span></button></div>
+        <div className="planner-scroll">
+          {panelTab==='routes'?<section aria-label="Road routes" aria-live="polite">
+            <div className="planner-section-heading"><span>DRIVER ROUTES</span><button onClick={()=>{routeCache.current.clear();setRouteRevision(v=>v+1);}} aria-label="Retry routes"><RefreshCw size={13}/> Refresh</button></div>
+            {(Object.entries(routeSummary) as [string,{state:string;km?:number;minutes?:number}][]).map(([id,route])=>{
+              const driver=drivers.find(d=>d.id===id);const count=orders.filter(o=>o.driver===id&&o.status!=='delivered').length;
+              return <button key={id} className={`planner-route-card ${selectedRoute===id?'is-selected':''}`} onClick={()=>setSelectedRoute(id)} disabled={route.state!=='ready'} aria-label={`View ${id} road route`}>
+                <div className="planner-route-title"><span className="planner-route-symbol" style={{color:driverColors[id]||'#2563eb',background:(driverColors[id]||'#2563eb')+'14'}}><Truck size={17}/></span><div><strong>{driver?.name||id}</strong><small>{id} / {count} {count===1?'stop':'stops'}</small></div><ChevronRight size={15}/></div>
+                <div className="planner-route-metrics">{route.state==='ready'?<><span>{route.km===0?'At sample depot':`${route.km?.toFixed(1)} km`}<small>Driving distance</small></span><span>{Math.ceil(route.minutes||0)} min<small>Estimated drive</small></span></>:<span className="planner-route-status">{route.state==='loading'?'Loading road geometry...':'Unavailable - use Refresh'}</span>}</div>
+              </button>;
+            })}
+            {Object.keys(routeSummary).length===0&&<div className="planner-empty"><Truck size={24}/><strong>No active routes</strong><p>Assigned sample stops will appear here.</p></div>}
+            <p className="planner-footnote">Routes start at the sample London depot. Drive estimates exclude live traffic. Public demo routing; use sample locations only.</p>
+          </section>:<section aria-label="Order stops"><label className="planner-search"><Search size={16}/><input aria-label="Search stops" placeholder="Search client or address" value={stopQuery} onChange={e=>setStopQuery(e.target.value)}/></label>
+            {orders.filter(o=>`${o.client} ${o.address} ${o.id}`.toLowerCase().includes(stopQuery.toLowerCase())).map(order=><button key={order.id} className="planner-stop-card" onClick={()=>setSelectedPosition([order.lat,order.lng])}><div><span className="planner-stop-icon"><MapPin size={17}/></span><strong>{order.client}</strong><ChevronRight size={14}/></div><p>{order.address}</p><footer><span>{order.timeWindow}</span><span>{order.driver||'Unassigned'}</span></footer></button>)}
+            {orders.filter(o=>`${o.client} ${o.address} ${o.id}`.toLowerCase().includes(stopQuery.toLowerCase())).length===0&&<p className="planner-empty">No matching stops.</p>}
+          </section>}
         </div>
-      </div>
-      <div className="flex-1 min-h-[320px] relative z-0 bg-slate-900">
-        <div className="absolute top-3 left-3 right-3 z-[500] pointer-events-none text-xs text-slate-800 bg-white/95 rounded-lg px-3 py-2 shadow">
-          Sample order locations · vehicle movement is simulated · no live GPS
+      </section>
+      <div className="planner-map">
+        <div className="planner-map-notice">
+          Road route preview / Sample locations / Simulated vehicles
           {tileFailed && <p role="status" className="text-red-700 mt-1">Map tiles could not load. Check your connection, then reload this page. Order details remain available.</p>}
           {routeFailed && <p role="status" className="text-red-700 mt-1">Some road routes are unavailable. Use Retry routes; only verified road geometry is drawn.</p>}
         </div>
@@ -307,6 +252,7 @@ export function RouteMap() {
             eventHandlers={{ tileerror: () => setTileFailed(true), load: () => setTileFailed(false) }}
           />
           <MapControls onZoomIn={zoomInRef} onZoomOut={zoomOutRef} />
+          <RouteFocus path={selectedRoute?polylines[selectedRoute]:undefined}/>
           <MapFlyTo position={selectedPosition} />
           {orders.map(order => (
             <Marker
@@ -380,12 +326,12 @@ export function RouteMap() {
         </MapContainer>
 
         {/* Floating Controls similar to design */}
-        <div className="absolute bottom-8 right-8 z-[500] flex flex-col gap-4 pointer-events-none">
-          <div className="bg-white/10 backdrop-blur-2xl border border-white/20 p-2 rounded-full flex gap-1 self-end pointer-events-auto transform shadow-2xl">
-            <button aria-label="Zoom in" onClick={() => zoomInRef.current?.()} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+        <div className="planner-map-controls">
+          <div className="planner-zoom">
+            <button aria-label="Zoom in" onClick={() => zoomInRef.current?.()} className="planner-zoom-button">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
             </button>
-            <button aria-label="Zoom out" onClick={() => zoomOutRef.current?.()} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+            <button aria-label="Zoom out" onClick={() => zoomOutRef.current?.()} className="planner-zoom-button">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path></svg>
             </button>
           </div>

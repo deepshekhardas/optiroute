@@ -5,6 +5,7 @@ import path from 'path';
 import polyline from '@mapbox/polyline';
 
 const app = express();
+app.disable("x-powered-by");
 const PORT = 3000;
 
 app.use(cors());
@@ -174,7 +175,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT} (Prod mode: ${distExists})`);
+    console.log(`Server running on http://0.0.0.0:${PORT} (Static assets: ${isProd && distExists})`);
   });
 }
 
