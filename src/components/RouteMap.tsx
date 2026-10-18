@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Play, Package, Truck, Settings2 } from 'lucide-react';
+import { Play, Package, Truck } from 'lucide-react';
 import { useFirestoreCollection } from '../lib/useFirestore';
-import { doc, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 // Fix leaflet default icon issue in React
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -55,6 +53,9 @@ function MapFlyTo({ position }: { position: [number, number] | null }) {
 
 export function RouteMap() {
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [previewRows, setPreviewRows] = useState<string[] | null>(null);
+  const [tileFailed, setTileFailed] = useState(false);
+  const [routeFailed, setRouteFailed] = useState(false);
   const { data: orders, loading: ordersLoading } = useFirestoreCollection<any>('orders');
   const { data: drivers, loading: driversLoading } = useFirestoreCollection<any>('drivers');
   const [polylines, setPolylines] = useState<Record<string, [number, number][]>>({});
@@ -76,22 +77,24 @@ export function RouteMap() {
         throw new Error(`API error: ${res.status}`);
       }
       const data = await res.json();
-      if (data.path) {
+      if (data.kind !== "road") setRouteFailed(true);
+      if (Array.isArray(data.path) && data.path.length > 0) {
         setPolylines(prev => ({...prev, [driverId]: data.path}));
         setLivePositions(prev => ({
-          ...prev, 
+          ...prev,
           [driverId]: { lat: data.path[0][0], lng: data.path[0][1], pathIndex: 0 }
         }));
       }
     } catch (e) {
       console.error(e);
+      setRouteFailed(true);
     }
   };
 
   useEffect(() => {
     // Generate real paths for assigned orders
     if (!orders || orders.length === 0) return;
-    
+
     // Group orders by driver
     const grouped: Record<string, typeof orders> = {};
     orders.forEach(o => {
@@ -121,14 +124,14 @@ export function RouteMap() {
         for (const [driverId, path] of Object.entries(polylines as Record<string, [number, number][]>)) {
           if (path && path.length > 0) {
             const state = prev[driverId] || { pathIndex: 0 };
-            
+
             // Move forward by a set number of points (adjust based on path density)
             // Directions API returns a very dense path, so jumping by 1 point with CSS transition makes it smooth
             let nextIndex = state.pathIndex + 1;
-            
+
             if (nextIndex >= path.length) {
               // Once they hit the end of the route, stay there or reset
-              nextIndex = 0; 
+              nextIndex = 0;
             }
             const pos = path[nextIndex];
             nextPositions[driverId] = { lat: pos[0], lng: pos[1], pathIndex: nextIndex };
@@ -159,7 +162,7 @@ export function RouteMap() {
         driver.remaining -= volume;
         return o.id + ' → ' + driver.id;
       });
-      window.alert('Demo assignment preview — deterministic capacity-based heuristic, not optimal routing. No dispatch or database changes.\n\n' + (rows.join('\n') || 'No unassigned or delayed sample orders need reassignment.'));
+      setPreviewRows(rows.length ? rows : ['No unassigned or delayed sample orders need reassignment.']);
     } finally { setIsOptimizing(false); }
   };
   if (ordersLoading || driversLoading) {
@@ -183,18 +186,10 @@ export function RouteMap() {
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center justify-between mb-6">
             <h2 className="font-bold tracking-tight text-lg text-white">Route Planner</h2>
-            <button 
-               onClick={() => {
-                 const newRadius = window.prompt("Set search radius for optimization (km)", "50");
-                 if (newRadius) alert("Radius updated to " + newRadius + "km!");
-               }}
-               className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 transition-colors border border-white/10"
-            >
-              <Settings2 size={16} />
-            </button>
+
           </div>
 
-          <button 
+          <button
             onClick={handleOptimize}
             disabled={isOptimizing}
             className="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-blue-600/30 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -207,16 +202,22 @@ export function RouteMap() {
           </button>
         </div>
 
+        {previewRows && <section aria-label="Assignment preview" aria-live="polite" className="p-4 border-b border-white/10 bg-blue-500/10 text-xs text-slate-200">
+          <h3 className="font-semibold mb-2">Capacity-based assignment preview</h3>
+          <p className="text-slate-400 mb-2">Calculated from current sample orders. Preview only; no dispatch or database changes.</p>
+          <ul className="space-y-1">{previewRows.map((row, index) => <li key={index}>{row}</li>)}</ul>
+          <button onClick={() => setPreviewRows(null)} className="mt-3 underline">Close preview</button>
+        </section>}
         <div className="flex-1 overflow-y-auto">
           <div className="px-6 py-3 bg-white/5 border-b border-white/10 flex justify-between items-center backdrop-blur-md sticky top-0 z-10">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Unassigned</span>
             <span className="bg-rose-500/20 text-rose-400 font-medium px-2 py-0.5 rounded text-[10px] border border-rose-500/30">{unassignedCount}</span>
           </div>
-          
+
           <div className="flex flex-col gap-2 p-4">
             {orders.filter(o => !o.driver).map(order => (
-              <div 
-                key={order.id} 
+              <div
+                key={order.id}
                 onClick={() => setSelectedPosition([order.lat, order.lng])}
                 className="bg-white/5 hover:bg-white/10 transition-colors p-3 rounded-xl border border-white/5 cursor-pointer border-l-2 border-l-rose-500"
               >
@@ -244,8 +245,8 @@ export function RouteMap() {
 
           <div className="flex flex-col gap-2 p-4">
              {orders.filter(o => o.driver).map(order => (
-              <div 
-                key={order.id} 
+              <div
+                key={order.id}
                 onClick={() => setSelectedPosition([order.lat, order.lng])}
                 className="bg-white/5 hover:bg-white/10 transition-colors p-3 rounded-xl border border-white/5 cursor-pointer border-l-2 border-l-blue-500"
               >
@@ -265,18 +266,25 @@ export function RouteMap() {
 
         </div>
       </div>
-      <div className="flex-1 relative z-0 bg-slate-900">
+      <div className="flex-1 min-h-[320px] relative z-0 bg-slate-900">
+        <div className="absolute top-3 left-3 right-3 z-[500] pointer-events-none text-xs text-slate-800 bg-white/95 rounded-lg px-3 py-2 shadow">
+          Sample order locations · vehicle movement is simulated · no live GPS
+          {tileFailed && <p role="status" className="text-red-700 mt-1">Map tiles could not load. Check your connection, then reload this page. Order details remain available.</p>}
+          {routeFailed && <p role="status" className="text-red-700 mt-1">Road directions unavailable for at least one route. Lines may connect stops directly; no measured ETA.</p>}
+        </div>
         <MapContainer center={[51.52, -0.1]} zoom={12} style={{ height: '100%', width: '100%', background: '#0f172a' }} zoomControl={false}>
           {/* Use a dark tile layer for better contrast in frosted glass theme */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+            eventHandlers={{ tileerror: () => setTileFailed(true), load: () => setTileFailed(false) }}
           />
           <MapControls onZoomIn={zoomInRef} onZoomOut={zoomOutRef} />
           <MapFlyTo position={selectedPosition} />
           {orders.map(order => (
-            <Marker 
-              key={order.id} 
+            <Marker
+              key={order.id}
               position={[order.lat, order.lng]}
               icon={order.driver ? customIcon : unassignedIcon}
             >
@@ -289,14 +297,15 @@ export function RouteMap() {
             </Marker>
           ))}
           {Object.entries(polylines).map(([driverId, pathCoords]) => (
-            <Polyline 
+            <Polyline
               key={driverId}
               positions={pathCoords}
-              pathOptions={{ 
-                color: driverColors[driverId] || '#3b82f6', 
-                weight: 4, 
-                opacity: 0.8 
-              }} 
+              pathOptions={{
+                color: driverColors[driverId] || '#3b82f6',
+                weight: 4,
+                opacity: 0.8,
+                dashArray: routeFailed ? '6 8' : undefined
+              }}
             />
           ))}
           {Object.entries(livePositions).map(([driverId, pos]: [string, any]) => {
@@ -310,7 +319,7 @@ export function RouteMap() {
             const driver = drivers.find((d: any) => d.id === driverId);
             const driverOrders = orders.filter(o => o.driver === driverId && o.status !== 'delivered');
             const nextStop = driverOrders.length > 0 ? driverOrders[0] : null;
-            
+
             // Mock ETA relative to current time for realism
             const etaTime = new Date(Date.now() + 1000 * 60 * 25).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
@@ -325,7 +334,7 @@ export function RouteMap() {
                   <div className="space-y-1.5">
                      <div className="flex justify-between items-center gap-4">
                        <span className="text-xs text-slate-500">Status</span>
-                       <span className="text-xs text-emerald-400 font-medium">En Route</span>
+                       <span className="text-xs text-emerald-400 font-medium">Simulated movement</span>
                      </div>
                      <div className="flex justify-between items-start gap-4">
                        <span className="text-xs text-slate-500 whitespace-nowrap">Next Stop</span>
@@ -334,8 +343,8 @@ export function RouteMap() {
                        </span>
                      </div>
                      <div className="flex justify-between items-center gap-4">
-                       <span className="text-xs text-slate-500">ETA</span>
-                       <span className="text-xs text-slate-200 font-mono">{nextStop ? etaTime : '--:--'}</span>
+                       <span className="text-xs text-slate-500">ETA (not measured)</span>
+                       <span className="text-xs text-slate-200 font-mono">Not available</span>
                      </div>
                   </div>
                 </Popup>
@@ -343,14 +352,14 @@ export function RouteMap() {
             );
           })}
         </MapContainer>
-        
+
         {/* Floating Controls similar to design */}
         <div className="absolute bottom-8 right-8 z-[500] flex flex-col gap-4 pointer-events-none">
           <div className="bg-white/10 backdrop-blur-2xl border border-white/20 p-2 rounded-full flex gap-1 self-end pointer-events-auto transform shadow-2xl">
-            <button onClick={() => zoomInRef.current?.()} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+            <button aria-label="Zoom in" onClick={() => zoomInRef.current?.()} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
             </button>
-            <button onClick={() => zoomOutRef.current?.()} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
+            <button aria-label="Zoom out" onClick={() => zoomOutRef.current?.()} className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M20 12H4"></path></svg>
             </button>
           </div>

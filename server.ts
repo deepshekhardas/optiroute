@@ -15,8 +15,8 @@ app.use(express.json());
 function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
   const p = 0.017453292519943295;
   const c = Math.cos;
-  const a = 0.5 - c((lat2 - lat1) * p)/2 + 
-          c(lat1 * p) * c(lat2 * p) * 
+  const a = 0.5 - c((lat2 - lat1) * p)/2 +
+          c(lat1 * p) * c(lat2 * p) *
           (1 - c((lon2 - lon1) * p))/2;
   return 12742 * Math.asin(Math.sqrt(a)); // 2 * R; R = 6371 km
 }
@@ -71,9 +71,9 @@ app.post('/api/vrp/optimize', async (req, res) => {
 
 // 2. API: Map Directions (OSRM)
 app.post('/api/routes/directions', async (req, res) => {
-  const { points } = req.body; 
+  const { points } = req.body || {};
   // points: [{lat, lng}, {lat, lng}]
-  if (!points || points.length < 2) {
+  if (!Array.isArray(points) || points.length < 2 || points.length > 50 || points.some((p: any) => !p || !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180)) {
     return res.json({ geometry: null });
   }
 
@@ -81,8 +81,9 @@ app.post('/api/routes/directions', async (req, res) => {
     const coordsStr = points.map((p: any) => `${p.lng},${p.lat}`).join(';');
     // Fallback to openstreetmap.de since project-osrm.org often returns 502
     const osrmUrl = `https://routing.openstreetmap.de/routed-car/route/v1/driving/${coordsStr}?overview=full`;
-    
+
     const response = await fetch(osrmUrl, {
+      signal: AbortSignal.timeout(8000),
       headers: {
         'User-Agent': 'OptiRoute-VR-App/1.0'
       }
@@ -93,7 +94,7 @@ app.post('/api/routes/directions', async (req, res) => {
       console.warn(`[Routing Fallback] OSRM API returned ${response.status}. Using direct lines.`);
       // Fallback: just return a path of direct points
       const fallbackPath = points.map((p: any) => [p.lat, p.lng]);
-      return res.json({ path: fallbackPath });
+      return res.json({ path: fallbackPath, kind: "direct", distanceMeters: null, durationSeconds: null });
     }
 
     const data = await response.json();
@@ -102,15 +103,15 @@ app.post('/api/routes/directions', async (req, res) => {
       // Decode polyline into [lat, lng] array for Leaflet
       const encodedPolyline = data.routes[0].geometry;
       const decodedCoords = polyline.decode(encodedPolyline);
-      return res.json({ path: decodedCoords });
+      return res.json({ path: decodedCoords, kind: "road", distanceMeters: data.routes[0].distance, durationSeconds: data.routes[0].duration });
     }
     const fallbackPath = points.map((p: any) => [p.lat, p.lng]);
-    return res.json({ path: fallbackPath });
+    return res.json({ path: fallbackPath, kind: "direct", distanceMeters: null, durationSeconds: null });
   } catch (error) {
     console.warn('[Routing Fallback] Failed to fetch route, using direct lines.', error instanceof Error ? error.message : '');
     // Fallback on error
     const fallbackPath = points.map((p: any) => [p.lat, p.lng]);
-    return res.json({ path: fallbackPath });
+    return res.json({ path: fallbackPath, kind: "direct", distanceMeters: null, durationSeconds: null });
   }
 });
 
