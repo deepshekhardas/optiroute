@@ -1,41 +1,76 @@
-# OptiRoute
+# OptiRoute Operations
 
-A fleet-operations dashboard and illustrative assignment planner.
+A company-scoped delivery-operations foundation: controlled assignments, accountable changes and an inspectable engineering design.
 
-[Live demo](https://ais-pre-tt57r3zgetshqrwfrdru54-357091713250.asia-southeast1.run.app/) · [Portfolio](https://deepshekhar-builds.deepshekhar.chatgpt.site) · [GitHub](https://github.com/deepshekhardas)
+**Status:** working local implementation with automated tests and browser proof. This is an enterprise foundation, not a claim of production certification, deployed SSO, live GPS or a commercially operating fleet.
 
-![Actual demo interface](docs/demo.png)
+![Actual local operations workspace](docs/operations-workspace.png)
 
-## What it demonstrates
+## What makes this more than a dashboard
 
-Fleet overview; map-based planner; driver and order screens; deterministic capacity-based assignment preview without database writes.
+| Business problem                                  | Implemented control                                      | Inspectable proof                                    |
+| ------------------------------------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| Companies must not see each other’s records       | Server-side company membership and scoped queries        | Cross-company API/store tests                        |
+| Read-only users must not dispatch                 | Admin / dispatcher / viewer checks on every operation    | Forged-role and privilege-escalation denial tests    |
+| Two operators must not overwrite each other       | Required record version; stale changes return 409        | Conflict and lifecycle tests                         |
+| Retried requests must not create duplicate orders | Transactional create-order idempotency receipts          | Same-key replay and changed-payload tests            |
+| Drivers must not receive excess load              | Capacity checks and assignment in one transaction        | Over-capacity rollback and capacity-release tests    |
+| Changes need accountability                       | Server-recorded audit, application update/delete blocked | Audit triggers, actor/state history and UI proof     |
+| Access must be revocable                          | Admin-only membership registry and revocation            | Immediate denial after revoke; last-admin protection |
+| Data must survive a restart                       | SQLite WAL with consistent backup helper                 | Reopen and backup/restore tests                      |
 
-## Run locally
+The operations service is **separate** from the original preview demo. It does not inherit the legacy demo server’s unsigned endpoints or browser-direct Firestore mutation model.
 
-Use Node.js 22 or newer and npm.
+## Try the working local version
+
+Use Node 24 LTS. SQLite remains experimental in the tested Node 24.11 runtime.
 
 ```sh
 npm ci
+cp firebase-applet-config.example.json firebase-applet-config.json
+npm run enterprise:build
+npm run enterprise:demo
 ```
 
-Copy `firebase-applet-config.example.json` to `firebase-applet-config.json` and fill in your **own** Firebase web-app configuration. Enable Google authentication, configure authorized domains and deploy reviewed Firestore rules to your own project. This repository intentionally excludes the author's hosted-project configuration and all environment files with values. Firebase web configuration is not an admin credential; access still depends on your authentication and security rules. Do not reuse the author's hosted database.
+Windows PowerShell: replace `cp` with `Copy-Item` if desired. Open the printed loopback URL, normally `http://127.0.0.1:4185`.
+
+This explicitly labelled local mode uses synthetic records and persists to `runtime/demo.sqlite`. It does not require a real login, dispatch deliveries or send messages. Production mode rejects sample identity mode and requires real server-side Firebase configuration. Do not deploy local-demo mode.
+
+## Explore the engineering
+
+- [Architecture, trust boundaries, state machine and tradeoffs](docs/ARCHITECTURE.md)
+- [API contracts, role matrix and failure responses](docs/API.md)
+- [Deployment prerequisites, backup and recovery runbook](docs/OPERATIONS.md)
+- [Executed verification and limits](docs/VERIFICATION.md)
+- [REA compiled-artifact inspection receipt](docs/REA-RECEIPT.json)
 
 ```sh
-npm run dev
+npm run test:enterprise
 npm run lint
-npm run build
+npm run enterprise:build
+npm audit --audit-level=high
 ```
 
-Private AI/payment integrations are disabled by default. The public Vite configuration deliberately does not inline a private Gemini key into browser code. Any future private-key integration must run server-side and requires separate testing.
+GitHub Actions runs the foundation checks on the feature branch and pull requests. Consult the actual run status; a workflow definition alone is not proof of a successful run.
 
-## Verification and boundaries
+## See the workflow
 
-TypeScript and Vite builds passed in the repair workspace on 18 October 2026. These results used the owner's local development configuration; a fresh installation with your own Firebase project requires setup. Shared demo UI was checked after source save. The checked-in screenshot is an actual demo capture, not a client deployment or fabricated outcome.
+A real local browser walkthrough created a synthetic order, assigned a driver, progressed it through `assigned → in_transit → delivered`, inspected the audit trail and reloaded the persisted record. Quantities, timestamps and counts in screenshots come from that test database.
 
-Assignment suggestions are a demo heuristic, not optimal VRP routing or real dispatch. Vehicle movement and efficiency metrics are illustrative. A minor legacy loading name remains.
+![Actual local audit history](docs/operations-audit.png)
 
-These are independent portfolio demos, not claims of client deployment, clinical certification or production scale. The linked Cloud Run preview hosting has no permanence or uptime guarantee. Mobile checks were bounded: CollabSphere/TicketFlow preview layouts were inspected; full signed-in Aura/OptiRoute mobile flows remain unverified.
+[390px responsive preview](docs/operations-mobile.png). The table scrolls within its container; this is a bounded desktop/mobile preview check, not a complete real-device accessibility certification.
 
-## Source
+## Production boundary
 
-React, TypeScript, Vite and Tailwind CSS. Original source headers/notices are retained. No new license grant is asserted by this publication. Generated build artifacts, dependencies, real credentials, hosted Firebase configuration and exported runtime data are excluded.
+Before serving real customers: configure and test actual Firebase identity/revocation, managed HTTPS and durable storage, encrypted/off-host backups, restore acceptance, observability, security/load testing and company-specific operational rules. Current storage targets a single application instance; PostgreSQL migration is needed before a multi-replica write workload. SSO/SAML, real route optimization, telematics and contractual SLAs are not implemented.
+
+No private keys, environment values, hosted Firebase config, runtime databases, backups or generated build artifacts are committed. Private AI inference is disabled in the public frontend configuration; there is no paid-model fallback.
+
+## Original portfolio demo
+
+[Existing live fleet demo](https://ais-pre-tt57r3zgetshqrwfrdru54-357091713250.asia-southeast1.run.app/) · [Portfolio](https://deepshekhar-builds.deepshekhar.chatgpt.site) · [Legacy setup and boundaries](docs/LEGACY-DEMO.md)
+
+That hosted preview remains the earlier illustrative fleet demo. The new operations foundation has **not** replaced it or been deployed as a production service.
+
+Original source notices are retained. No additional license grant is asserted here.

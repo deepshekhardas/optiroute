@@ -1,5 +1,5 @@
 {
-  "name": "react-example",
+  "name": "optiroute",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,7 +9,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "enterprise:build": "vite build --config enterprise/vite.config.ts && node enterprise/build.mjs",
+    "enterprise:start": "node enterprise-dist/service.mjs",
+    "enterprise:demo": "node enterprise/demo.mjs",
+    "test:enterprise": "node --test enterprise/tests/*.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -28,6 +32,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.12.1",
+    "firebase-admin": "^14.5.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -40,5 +45,15 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6",
+    "qs": "^6.16.1",
+    "tsx": {
+      "esbuild": "^0.28.2"
+    }
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

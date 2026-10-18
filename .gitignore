@@ -8,3 +8,10 @@ firebase-applet-config.json
 *.log
 *.pdf
 .DS_Store
+
+enterprise-dist/
+runtime/
+*.sqlite*
+service-account*.json
+npm-audit-local.json
+backups/
