@@ -334,3 +334,5 @@ export function OrderList() {
     </div>
   );
 }
+
+// Shared record workspace: light surfaces and stored-date history filtering.
