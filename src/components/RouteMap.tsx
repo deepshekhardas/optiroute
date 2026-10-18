@@ -197,6 +197,7 @@ export function RouteMap() {
     'DRV-03': '#a855f7',
     'DRV-04': '#ec4899',
     'DRV-05': '#22c55e',
+    'DRV-06': '#0d9488',
   };
 
   return (
@@ -223,8 +224,8 @@ export function RouteMap() {
 
         <section aria-label="Road routes" aria-live="polite" className="px-4 py-3 border-b border-white/10 text-xs text-slate-300">
           <div className="flex justify-between gap-2 mb-2"><strong>Road routes</strong><button className="underline" onClick={()=>{routeCache.current.clear();setRouteRevision(v=>v+1);}}>Retry routes</button></div>
-          <p className="text-slate-400 mb-2">From sample London depot · driving estimates exclude live traffic. Public demo routing; do not enter confidential locations.</p>
-          {(Object.entries(routeSummary) as [string, {state:string;km?:number;minutes?:number}][]).map(([id,route])=><div key={id} className="flex justify-between py-1 gap-2"><span>{id}</span><span>{route.state==='ready'?`${route.km?.toFixed(1)} km · ${Math.ceil(route.minutes||0)} min`:route.state==='loading'?'Loading road route…':'Unavailable — retry'}</span></div>)}
+          <p className="text-slate-400 mb-2">From sample London depot  /  driving estimates exclude live traffic. Public demo routing; do not enter confidential locations.</p>
+          {(Object.entries(routeSummary) as [string, {state:string;km?:number;minutes?:number}][]).map(([id,route])=><div key={id} className="flex justify-between py-1 gap-2"><span>{id}</span><span>{route.state==='ready'?(route.km===0?'At sample depot':`${route.km?.toFixed(1)} km  /  ${Math.ceil(route.minutes||0)} min`):route.state==='loading'?'Loading road route / ':'Unavailable  /  retry'}</span></div>)}
           {Object.keys(routeSummary).length===0 && <p>No active assigned stops.</p>}
         </section>
         {previewRows && <section aria-label="Assignment preview" aria-live="polite" className="p-4 border-b border-white/10 bg-blue-500/10 text-xs text-slate-200">
