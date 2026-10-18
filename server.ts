@@ -4,6 +4,7 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import polyline from '@mapbox/polyline';
 
+// Record workspace release: 18 October 2026.
 const app = express();
 app.disable("x-powered-by");
 const PORT = 3000;

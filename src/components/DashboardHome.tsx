@@ -59,7 +59,7 @@ export function DashboardHome() {
   return (
     <div className="records-page flex-1 overflow-auto p-6 sm:p-8 w-full z-10 relative">
       <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-8">Fleet Overview</h1>
-      <p className="text-sm text-slate-500 -mt-5 mb-7">A clear view of current fleet records and delivery exceptions.</p>
+      <p className="text-sm text-slate-500 mb-7">A clear view of current fleet records and delivery exceptions.</p>
       {previewRows && <section aria-label="Reassignment preview" className="planner-preview mb-6 rounded-xl"><strong>Sample reassignment preview</strong><p>Capacity-based proposal only. No dispatch or saved changes.</p><ul>{previewRows.map((row,i)=><li key={i}>{row}</li>)}</ul><button onClick={()=>setPreviewRows(null)}>Close preview</button></section>}
       {optimizationError && <p role="alert" className="mb-4 rounded-xl border border-rose-500/30 p-4 text-rose-600">{optimizationError}</p>}
 
