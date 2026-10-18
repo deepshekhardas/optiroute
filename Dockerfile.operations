@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+ARG FIREBASE_PROJECT_ID
+# Only public Firebase web configuration enters this build secret. Never supply ADC here.
+RUN --mount=type=secret,id=firebase_web_config,required=true,target=/app/firebase-applet-config.json \
+    node enterprise/check-web-config.mjs && npm run enterprise:build
+RUN npm prune --omit=dev
+
+FROM node:24-bookworm-slim AS runtime
+ENV NODE_ENV=production PORT=4185 OPTIR_DB=/data/operations.sqlite
+WORKDIR /app
+COPY --from=build --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/package.json ./package.json
+COPY --from=build --chown=node:node /app/enterprise-dist ./enterprise-dist
+COPY --from=build --chown=node:node /app/enterprise ./enterprise
+RUN mkdir /data && chown node:node /data
+USER node
+EXPOSE 4185
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:4185/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "enterprise-dist/service.mjs"]

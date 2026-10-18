@@ -32,6 +32,22 @@ The service is separate from `server.ts`. Route only the enterprise service for 
 
 5. Put the service behind managed TLS, preserve the configured app Host header at the trusted reverse proxy, restrict private volumes/credentials, configure gateway limits and monitoring, and test actual token revocation, identity lifecycle, roles, backup restore and device accessibility before customer acceptance. A successful local test does not establish these properties in hosting.
 
+## Container deployment package
+
+`Dockerfile.operations` packages only the operations service, runs as the unprivileged Node user, and uses `/data/operations.sqlite`. Mount a persistent volume at `/data`; run a single replica. Expose the container only through a TLS reverse proxy that preserves APP_ORIGIN's Host. The health check verifies process response only.
+
+Build with a public Firebase web configuration matching the server project:
+
+```sh
+docker build -f Dockerfile.operations --build-arg FIREBASE_PROJECT_ID=YOUR_REAL_PROJECT --secret id=firebase_web_config,src=/private/firebase-web.json -t optiroute-operations:review .
+```
+
+The build rejects placeholder fields, malformed auth domains and mismatched projects. This validates configuration shape, not actual identity access. The public web configuration is compiled into browser assets; it is not a service-account credential. Never use an ADC/service-account file as that build secret.
+
+At runtime supply NODE_ENV=production, APP_ORIGIN, FIREBASE_PROJECT_ID and GOOGLE_APPLICATION_CREDENTIALS pointing to a read-only server credential mount. Mount `/data` read-write for UID 1000 and keep credentials out of the image. Omit OPTIR_LOCAL_DEMO and emulator settings. Apply read-only root filesystem, a temporary `/tmp` mount, no-new-privileges and dropped Linux capabilities in the hosting runtime. Configure gateway limits, TLS and off-host encrypted backups before customer use.
+
+Container execution has not been verified on this laptop: Docker CLI exists, but the Docker Desktop Linux engine is unavailable. Test image build, volume permissions, credential startup, real sign-in and restore in staging before promotion. No hosting destination or paid infrastructure has been provisioned by this package.
+
 ## Consistent backup
 
 ```sh

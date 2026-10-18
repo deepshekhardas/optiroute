@@ -1,0 +1,13 @@
+.git
+.env*
+node_modules
+dist
+enterprise-dist
+runtime
+backups
+*.sqlite*
+*.log
+firebase-applet-config.json
+service-account*.json
+docs
+output
