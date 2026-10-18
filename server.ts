@@ -135,7 +135,10 @@ app.get('/api/webhooks/pending', (req, res) => {
 });
 
 async function startServer() {
-  const isProd = process.env.NODE_ENV === "production" || !process.env.VITE_DEV_SERVER;
+  // AI Studio launches the development command with --host. Use Vite there,
+  // otherwise an old dist folder masks saved frontend changes indefinitely.
+  const isDevLaunch = process.argv.includes('--host') && process.env.NODE_ENV !== 'production';
+  const isProd = process.env.NODE_ENV === "production" || (!process.env.VITE_DEV_SERVER && !isDevLaunch);
   const distPath = path.join(process.cwd(), 'dist');
   const fs = await import('fs');
   let distExists = fs.existsSync(distPath);
