@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    function isValidDriver(data) {
+      return data.keys().hasAll(['userId', 'name', 'status', 'vehicle', 'capacity', 'utilization'])
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 100
+        && data.status in ['active', 'idle', 'delayed', 'completed']
+        && data.vehicle is string && data.vehicle.size() <= 100
+        && data.capacity is number
+        && data.utilization is number;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['userId', 'client', 'address', 'status', 'timeWindow', 'volume', 'lat', 'lng'])
+        && data.userId == request.auth.uid
+        && data.client is string && data.client.size() <= 100
+        && data.address is string && data.address.size() <= 200
+        && data.status in ['pending', 'in-transit', 'delivered', 'delayed']
+        && data.timeWindow is string && data.timeWindow.size() <= 50
+        && data.volume is number
+        && data.lat is number
+        && data.lng is number;
+    }
+
+    match /drivers/{driverId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(driverId) && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+                    && isValidId(driverId) 
+                    && isValidDriver(incoming());
+                    
+      allow update: if isSignedIn() 
+                    && isValidId(driverId) 
+                    && existing().userId == request.auth.uid
+                    && incoming().userId == request.auth.uid
+                    && isValidDriver(incoming());
+                    
+      allow delete: if isSignedIn() && isValidId(driverId) && existing().userId == request.auth.uid;
+    }
+
+    match /orders/{orderId} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && isValidId(orderId) && resource.data.userId == request.auth.uid;
+      
+      allow create: if isSignedIn() 
+                    && isValidId(orderId) 
+                    && isValidOrder(incoming());
+                    
+      allow update: if isSignedIn() 
+                    && isValidId(orderId) 
+                    && existing().userId == request.auth.uid
+                    && incoming().userId == request.auth.uid
+                    && isValidOrder(incoming());
+
+      allow delete: if isSignedIn() && isValidId(orderId) && existing().userId == request.auth.uid;
+    }
+  }
+}

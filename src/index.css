@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg-main: #020617; /* slate-950 */
+}
+
+body {
+  background-color: var(--color-bg-main);
+  color: #e2e8f0; /* slate-200 */
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Leaflet Popup Dark Theme Override */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+  backdrop-filter: blur(8px) !important;
+  color: #f1f5f9 !important;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3) !important;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+}
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: #e2e8f0 !important;
+}
+
+.vehicle-marker {
+  transition: transform 1s linear;
+}

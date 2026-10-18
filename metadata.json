@@ -1,0 +1,6 @@
+{
+  "name": "OptiRoute AI: Fleet Ops",
+  "description": "An advanced AI-powered fleet management and route optimization dashboard for modern logistics. Features real-time tracking, VRP routing, driver utilization metrics, historical analytics, and order management capabilities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
