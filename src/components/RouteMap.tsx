@@ -66,55 +66,74 @@ export function RouteMap() {
   const zoomInRef = React.useRef<() => void>(() => {});
   const zoomOutRef = React.useRef<() => void>(() => {});
 
-  const fetchDirections = async (points: {lat: number, lng: number}[], driverId: string) => {
-    try {
-      const res = await fetch('/api/routes/directions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ points })
-      });
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
-      const data = await res.json();
-      if (data.kind !== "road") setRouteFailed(true);
-      if (Array.isArray(data.path) && data.path.length > 0) {
-        setPolylines(prev => ({...prev, [driverId]: data.path}));
-        setLivePositions(prev => ({
-          ...prev,
-          [driverId]: { lat: data.path[0][0], lng: data.path[0][1], pathIndex: 0 }
-        }));
-      }
-    } catch (e) {
-      console.error(e);
-      setRouteFailed(true);
-    }
-  };
+  const [routeRevision, setRouteRevision] = useState(0);
+  const [routeSummary, setRouteSummary] = useState<Record<string, {state: string; km?: number; minutes?: number}>>({});
+  const routeCache = React.useRef(new Map<string, {at: number; path: [number, number][]; km: number; minutes: number}>());
 
   useEffect(() => {
-    // Generate real paths for assigned orders
-    if (!orders || orders.length === 0) return;
-
-    // Group orders by driver
-    const grouped: Record<string, typeof orders> = {};
-    orders.forEach(o => {
-      if (o.driver) {
-        if (!grouped[o.driver]) grouped[o.driver] = [];
-        grouped[o.driver].push(o);
-      }
+    const controller = new AbortController();
+    let current = true;
+    const grouped: Record<string, any[]> = {};
+    orders.filter(o => o.driver && o.status !== 'delivered').forEach(o => {
+      (grouped[o.driver] ||= []).push(o);
     });
-
-    Object.entries(grouped).forEach(([driverId, drvOrders]) => {
-      if (drvOrders.length >= 2) {
-        const points = drvOrders.map(o => ({ lat: o.lat, lng: o.lng }));
-        fetchDirections(points, driverId);
-      } else {
-        // Clear if not enough points
-        setPolylines(p => { const newP = {...p}; delete newP[driverId]; return newP; });
-        setLivePositions(prev => { const newP = {...prev}; delete newP[driverId]; return newP; });
+    setPolylines({}); setLivePositions({}); setRouteFailed(false);
+    setRouteSummary(Object.fromEntries(Object.keys(grouped).map(id => [id, {state: 'loading'}])));
+    async function load() {
+      for (const [driverId, stops] of Object.entries(grouped)) {
+        if (!current) return;
+        // A fixed, labelled sample depot makes single-stop routes meaningful too.
+        const points = [{lat: 51.505, lng: -0.09}, ...stops.map(o => ({lat:o.lat,lng:o.lng}))];
+        try {
+          if (points.some(p => !Number.isFinite(p.lat) || !Number.isFinite(p.lng) || Math.abs(p.lat)>90 || Math.abs(p.lng)>180) || points.length>50) throw Error('Invalid route coordinates');
+          const key = JSON.stringify(points);
+          let result = routeCache.current.get(key);
+          if (!result || Date.now()-result.at>300000) {
+            result = undefined;
+            // Shared static previews may not expose the Node API. Try it first,
+            // then fetch GeoJSON from the public routing service for this demo.
+            try {
+              const response = await fetch('/api/routes/directions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({points}), signal:AbortSignal.any([controller.signal,AbortSignal.timeout(9000)])});
+              if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
+                const data = await response.json();
+                if (data.kind==='road' && Array.isArray(data.path) && data.path.length>1 && Number.isFinite(data.distanceMeters) && Number.isFinite(data.durationSeconds)) result={at:Date.now(),path:data.path,km:data.distanceMeters/1000,minutes:data.durationSeconds/60};
+              }
+            } catch { /* Public demo provider below; cancellation is checked first. */ }
+            if (!current) return;
+            if (!result) {
+              const coordinates=points.map(p=>`${p.lng},${p.lat}`).join(';');
+              for (const provider of ['https://routing.openstreetmap.de/routed-car/route/v1/driving/','https://router.project-osrm.org/route/v1/driving/']) {
+                if (!current) return;
+                try {
+                  const response=await fetch(`${provider}${coordinates}?overview=full&geometries=geojson&steps=false`,{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(9000)])});
+                  if (!response.ok) continue;
+                  const data=await response.json(), route=data.routes?.[0];
+                  if (data.code!=='Ok' || !Array.isArray(route?.geometry?.coordinates) || route.geometry.coordinates.length<2 || !Number.isFinite(route.distance) || !Number.isFinite(route.duration)) continue;
+                  const path=route.geometry.coordinates.map((p:number[])=>[p[1],p[0]] as [number,number]);
+                  if (path.some((p:[number,number])=>!Number.isFinite(p[0])||!Number.isFinite(p[1])||Math.abs(p[0])>90||Math.abs(p[1])>180)) continue;
+                  result={at:Date.now(),path,km:route.distance/1000,minutes:route.duration/60}; break;
+                } catch { /* Bounded fallback, never fabricated road geometry. */ }
+              }
+            }
+            if (!result) throw Error('Road directions unavailable');
+            if (routeCache.current.size>=30) routeCache.current.clear();
+            routeCache.current.set(key,result);
+          }
+          if (!current) return;
+          const resolved=result;
+          setPolylines(prev=>({...prev,[driverId]:resolved.path}));
+          setRouteSummary(prev=>({...prev,[driverId]:{state:'ready',km:resolved.km,minutes:resolved.minutes}}));
+          setLivePositions(prev=>({...prev,[driverId]:{lat:resolved.path[0][0],lng:resolved.path[0][1],pathIndex:0}}));
+        } catch {
+          if (!current) return;
+          setRouteFailed(true);
+          setRouteSummary(prev=>({...prev,[driverId]:{state:'failed'}}));
+        }
       }
-    });
-  }, [orders]);
+    }
+    void load();
+    return ()=>{current=false;controller.abort();};
+  }, [orders, routeRevision]);
 
   // Simulate vehicle movement
   useEffect(() => {
@@ -202,6 +221,12 @@ export function RouteMap() {
           </button>
         </div>
 
+        <section aria-label="Road routes" aria-live="polite" className="px-4 py-3 border-b border-white/10 text-xs text-slate-300">
+          <div className="flex justify-between gap-2 mb-2"><strong>Road routes</strong><button className="underline" onClick={()=>{routeCache.current.clear();setRouteRevision(v=>v+1);}}>Retry routes</button></div>
+          <p className="text-slate-400 mb-2">From sample London depot · driving estimates exclude live traffic. Public demo routing; do not enter confidential locations.</p>
+          {(Object.entries(routeSummary) as [string, {state:string;km?:number;minutes?:number}][]).map(([id,route])=><div key={id} className="flex justify-between py-1 gap-2"><span>{id}</span><span>{route.state==='ready'?`${route.km?.toFixed(1)} km · ${Math.ceil(route.minutes||0)} min`:route.state==='loading'?'Loading road route…':'Unavailable — retry'}</span></div>)}
+          {Object.keys(routeSummary).length===0 && <p>No active assigned stops.</p>}
+        </section>
         {previewRows && <section aria-label="Assignment preview" aria-live="polite" className="p-4 border-b border-white/10 bg-blue-500/10 text-xs text-slate-200">
           <h3 className="font-semibold mb-2">Capacity-based assignment preview</h3>
           <p className="text-slate-400 mb-2">Calculated from current sample orders. Preview only; no dispatch or database changes.</p>
@@ -270,7 +295,7 @@ export function RouteMap() {
         <div className="absolute top-3 left-3 right-3 z-[500] pointer-events-none text-xs text-slate-800 bg-white/95 rounded-lg px-3 py-2 shadow">
           Sample order locations Â· vehicle movement is simulated Â· no live GPS
           {tileFailed && <p role="status" className="text-red-700 mt-1">Map tiles could not load. Check your connection, then reload this page. Order details remain available.</p>}
-          {routeFailed && <p role="status" className="text-red-700 mt-1">Road directions unavailable for at least one route. Lines may connect stops directly; no measured ETA.</p>}
+          {routeFailed && <p role="status" className="text-red-700 mt-1">Some road routes are unavailable. Use Retry routes; only verified road geometry is drawn.</p>}
         </div>
         <MapContainer center={[51.52, -0.1]} zoom={12} style={{ height: '100%', width: '100%', background: '#0f172a' }} zoomControl={false}>
           {/* Use a dark tile layer for better contrast in frosted glass theme */}
@@ -304,7 +329,7 @@ export function RouteMap() {
                 color: driverColors[driverId] || '#3b82f6',
                 weight: 4,
                 opacity: 0.8,
-                dashArray: routeFailed ? '6 8' : undefined
+                lineCap: 'round'
               }}
             />
           ))}
