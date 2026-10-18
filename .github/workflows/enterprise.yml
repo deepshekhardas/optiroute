@@ -1,7 +1,7 @@
 name: Operations foundation checks
 on:
   push:
-    branches: [enterprise-foundation]
+    branches: [main, enterprise-foundation]
   pull_request:
 permissions:
   contents: read

@@ -51,7 +51,7 @@ npm run enterprise:build
 npm audit --audit-level=high
 ```
 
-GitHub Actions runs the foundation checks on the feature branch and pull requests. Consult the actual run status; a workflow definition alone is not proof of a successful run.
+GitHub Actions runs the foundation checks on main, the feature branch and pull requests. Consult the actual run status; a workflow definition alone is not proof of a successful run.
 
 ## See the workflow
 
